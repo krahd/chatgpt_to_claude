@@ -4,57 +4,34 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import html
 import json
 import shutil
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-try:
-    from .migration_core import (
-        build_attachment_previews,
-        build_upload_plan,
-        bundle_topics_with_budgets,
-        collect_memory_candidates,
-        conversation_to_markdown,
-        dedupe_memory_items,
-        estimate_tokens,
-        extract_attachments,
-        filter_conversations_by_date,
-        infer_topics,
-        load_state,
-        parse_conversations,
-        read_conversations_json,
-        redact_text,
-        save_state,
-        search_conversations,
-        slugify,
-        summarise_conversation,
-        ts_to_iso,
-        validate_output_dir,
-    )
-except ImportError:
-    from migration_core import (
-        build_attachment_previews,
-        build_upload_plan,
-        bundle_topics_with_budgets,
-        collect_memory_candidates,
-        conversation_to_markdown,
-        dedupe_memory_items,
-        estimate_tokens,
-        extract_attachments,
-        filter_conversations_by_date,
-        infer_topics,
-        load_state,
-        parse_conversations,
-        read_conversations_json,
-        redact_text,
-        save_state,
-        search_conversations,
-        slugify,
-        summarise_conversation,
-        ts_to_iso,
-        validate_output_dir,
-    )
+from .migration_core import (
+    build_attachment_previews,
+    build_upload_plan,
+    bundle_topics_with_budgets,
+    collect_memory_candidates,
+    conversation_to_markdown,
+    dedupe_memory_items,
+    estimate_tokens,
+    extract_attachments,
+    filter_conversations_by_date,
+    infer_topics,
+    load_state,
+    parse_conversations,
+    read_conversations_json,
+    redact_text,
+    save_state,
+    search_conversations,
+    slugify,
+    summarise_conversation,
+    ts_to_iso,
+    validate_output_dir,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,20 +85,32 @@ def parse_numeric_selection(raw: str, max_index: int) -> set[int]:
 
 
 
+def _selection_list(data: dict[str, Any], key: str, legacy_key: str) -> list[Any]:
+    value = data.get(key)
+    if value is None:
+        value = data.get(legacy_key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"Selection file field {key!r} must be a list.")
+    return value
+
+
 def validate_selection_file(path: Path) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Selection file must contain a JSON object.")
-    for key in ("conversation_indices", "memory_indices", "topics"):
-        if key in data and not isinstance(data[key], list):
-            raise ValueError(f"Selection file field {key!r} must be a list.")
+    selected_conversations = _selection_list(data, "selected_conversations", "conversation_indices")
+    selected_memory_items = _selection_list(data, "selected_memory_items", "memory_indices")
+    selected_topics = _selection_list(data, "selected_topics", "topics")
+    edited_memory_items = data.get("edited_memory_items", {})
+    if not isinstance(edited_memory_items, dict):
+        raise ValueError("Selection file field 'edited_memory_items' must be an object.")
     return {
-        "conversation_count": len(data.get("conversation_indices", [])),
-        "memory_count": len(data.get("memory_indices", [])),
-        "topic_count": len(data.get("topics", [])),
-        "conversation_indices": data.get("conversation_indices", []),
-        "memory_indices": data.get("memory_indices", []),
-        "topics": data.get("topics", []),
+        "conversation_count": len(selected_conversations),
+        "memory_count": len(selected_memory_items),
+        "topic_count": len(selected_topics),
+        "selected_conversations": selected_conversations,
+        "selected_memory_items": selected_memory_items,
+        "selected_topics": selected_topics,
     }
 
 
@@ -132,14 +121,22 @@ def write_selection_summary(output_dir: Path, summary: dict | None) -> None:
 
 def apply_selection_file(conversations, memory_items, topics, path: Path):
     data = json.loads(path.read_text(encoding="utf-8"))
-    conv_keys = {str(x) for x in data.get("selected_conversations", [])}
-    mem_keys = {str(x) for x in data.get("selected_memory_items", [])}
-    topic_keys = {str(x) for x in data.get("selected_topics", [])}
+    if not isinstance(data, dict):
+        raise ValueError("Selection file must contain a JSON object.")
+    selected_conversations = _selection_list(data, "selected_conversations", "conversation_indices")
+    selected_memory_items = _selection_list(data, "selected_memory_items", "memory_indices")
+    selected_topics_raw = _selection_list(data, "selected_topics", "topics")
+    edited_memory_items = data.get("edited_memory_items", {})
+    if not isinstance(edited_memory_items, dict):
+        raise ValueError("Selection file field 'edited_memory_items' must be an object.")
+    conv_keys = {str(x) for x in selected_conversations}
+    mem_keys = {str(x) for x in selected_memory_items}
+    topic_keys = {str(x) for x in selected_topics_raw}
     conversation_map = {str(c.source_index): c for c in conversations}
     memory_map = {str(idx): m for idx, m in enumerate(memory_items, start=1)}
     selected_conversations = [conversation_map[k] for k in conv_keys if k in conversation_map] if conv_keys else list(conversations)
     selected_memory = [memory_map[k] for k in mem_keys if k in memory_map] if mem_keys else list(memory_items)
-    edited = {str(k): v for k, v in data.get("edited_memory_items", {}).items()}
+    edited = {str(k): str(v) for k, v in edited_memory_items.items() if v}
     for key, item in memory_map.items():
         if key in edited and edited[key]:
             item.text = edited[key]
@@ -212,7 +209,7 @@ def write_memory_files(selected_items, output_dir: Path, redactions=None) -> Non
     js.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     prov.write_text(json.dumps([{"text": row["text"], "source_refs": row.get("source_refs", []), "examples": row.get("examples", [])} for row in payload], ensure_ascii=False, indent=2), encoding="utf-8")
     with review.open("w", encoding="utf-8") as f:
-        f.write("keep\tcategory\tconfidence\tcount\tfirst_seen\tstale\tsensitivity\trationale\ttext\texamples\tcontradictions\n")
+        f.write("keep\tcategory\tconfidence\tcount\tfirst_seen\tstale\tsensitivity\trationale\ttext\texamples\tcontradictions\tsource_refs\n")
         for item in selected_items:
             f.write(
                 f"yes\t{item.category}\t{item.confidence}\t{item.count}\t{item.first_seen or ''}\t{item.stale}\t{','.join(item.sensitivity_flags)}\t{item.rationale}\t{redact_text(item.text, redactions)}\t{' | '.join(redact_text(x, redactions) for x in item.examples)}\t{' | '.join(redact_text(x, redactions) for x in item.contradictions)}\t{' | '.join(item.source_refs)}\n"
@@ -280,7 +277,7 @@ def write_projects(topics, output_dir: Path, token_budget: int, redactions=None,
 
 
 def write_attachment_summary(attachments, output_dir: Path) -> None:
-    counts = {}
+    counts: dict[str, int] = {}
     total_size = 0
     for item in attachments:
         counts[item.category] = counts.get(item.category, 0) + 1
@@ -333,7 +330,7 @@ def write_filters_used(output_dir: Path, args) -> None:
 def write_batch_plan(output_dir: Path, conversations, batch_size: int | None) -> None:
     if not batch_size or batch_size <= 0:
         return
-    batches = []
+    batches: list[dict[str, Any]] = []
     for i in range(0, len(conversations), batch_size):
         chunk = conversations[i:i + batch_size]
         batches.append({
@@ -361,7 +358,7 @@ def filter_conversations_by_title(conversations, include: str | None, exclude: s
 
 
 def write_export_summary(output_dir: Path, conversations, memory_items, topics, attachments) -> None:
-    category_counts = {}
+    category_counts: dict[str, int] = {}
     for item in attachments:
         category_counts[item.category] = category_counts.get(item.category, 0) + 1
     summary = {
@@ -377,8 +374,8 @@ def write_export_summary(output_dir: Path, conversations, memory_items, topics, 
 
 
 def write_quality_reports(output_dir: Path, conversations, stale_before: str | None = None) -> None:
-    title_counts = {}
-    stale = []
+    title_counts: dict[str, int] = {}
+    stale: list[dict[str, Any]] = []
     stale_threshold = None
     if stale_before:
         try:
@@ -438,13 +435,13 @@ def write_report_fingerprints(output_dir: Path) -> None:
 
 def write_selection_mismatch_report(output_dir: Path, selection_summary: dict | None, conversations, memory_items, topics) -> None:
     if not selection_summary:
-        payload = {"missing_conversation_indices": [], "missing_topics": []}
+        payload: dict[str, list[Any]] = {"missing_conversation_indices": [], "missing_topics": []}
         (output_dir / "selection_mismatch_report.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return
     conversation_ids = {c.source_index for c in conversations}
-    missing_conversations = [i for i in selection_summary.get("conversation_indices", []) if i not in conversation_ids]
+    missing_conversations = [i for i in selection_summary.get("selected_conversations", []) if i not in conversation_ids]
     topic_names = set(topics.keys()) if isinstance(topics, dict) else set()
-    missing_topics = [t for t in selection_summary.get("topics", []) if t not in topic_names]
+    missing_topics = [t for t in selection_summary.get("selected_topics", []) if t not in topic_names]
     payload = {
         "missing_conversation_indices": missing_conversations,
         "missing_topics": missing_topics,
@@ -501,7 +498,7 @@ def write_reports(output_dir: Path) -> None:
                 f.write("  - stale: true\n")
         if not risky:
             f.write("- None\n")
-    html = [
+    html_lines = [
         "<html><head><meta charset='utf-8'><title>Migration Summary</title>",
         "<style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:.4rem;text-align:left;}code{background:#f4f4f4;padding:.1rem .3rem;} .warn{color:#9a6700;} .err{color:#b00020;}</style>",
         "</head><body>",
@@ -512,13 +509,13 @@ def write_reports(output_dir: Path) -> None:
         "<h2>Conversations</h2><table><tr><th>File</th><th>Title</th><th>Created</th><th>Messages</th><th>Tokens</th></tr>",
     ]
     for row in manifest:
-        html.append(f"<tr><td><code>{row['file']}</code></td><td>{row['title']}</td><td>{row.get('created','')}</td><td>{row.get('message_count','')}</td><td>{row.get('estimated_tokens','')}</td></tr>")
-    html.append("</table><h2>Memory needing attention</h2><ul>")
+        html_lines.append(f"<tr><td><code>{row['file']}</code></td><td>{row['title']}</td><td>{row.get('created','')}</td><td>{row.get('message_count','')}</td><td>{row.get('estimated_tokens','')}</td></tr>")
+    html_lines.append("</table><h2>Memory needing attention</h2><ul>")
     for item in risky[:200]:
         flags = ', '.join(item.get('sensitivity_flags', []))
-        html.append(f"<li><code>{item.get('category','')}</code> {item.get('text','')} {'(' + flags + ')' if flags else ''}</li>")
-    html.append("</ul></body></html>")
-    (output_dir / "migration_summary.html").write_text(''.join(html), encoding="utf-8")
+        html_lines.append(f"<li><code>{item.get('category','')}</code> {item.get('text','')} {'(' + flags + ')' if flags else ''}</li>")
+    html_lines.append("</ul></body></html>")
+    (output_dir / "migration_summary.html").write_text(''.join(html_lines), encoding="utf-8")
 
 
 def write_readme(output_dir: Path) -> None:

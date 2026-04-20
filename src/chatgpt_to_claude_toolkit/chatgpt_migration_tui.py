@@ -7,10 +7,7 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-try:
-    from .migration_core import collect_memory_candidates, conversation_to_markdown, dedupe_memory_items, estimate_tokens, infer_topics, parse_conversations, read_conversations_json, search_conversations, summarise_conversation, ts_to_iso
-except ImportError:
-    from migration_core import collect_memory_candidates, conversation_to_markdown, dedupe_memory_items, estimate_tokens, infer_topics, parse_conversations, read_conversations_json, search_conversations, summarise_conversation, ts_to_iso
+from .migration_core import collect_memory_candidates, conversation_to_markdown, dedupe_memory_items, estimate_tokens, infer_topics, parse_conversations, read_conversations_json, search_conversations, summarise_conversation, ts_to_iso
 
 HELP_TEXT = [
     "Tab pane | ↑↓ / jk move | Space toggle | / search | a all | n none | s save | q quit",
@@ -159,8 +156,8 @@ class App:
             text = f"[{'x' if item.selected else ' '}] {item.label}"
             stdscr.addstr(row, 0, text[:left_w - 1], curses.A_REVERSE if idx == pane.filtered[pane.cursor] else curses.A_NORMAL)
 
-        item = pane.current_item()
-        if item:
+        current_item = pane.current_item()
+        if current_item:
             rx = left_w + 2
             rw = max(10, w - rx - 1)
             if pane.name == "Memory" and not self.preview_final:
@@ -168,14 +165,14 @@ class App:
                 stdscr.addstr(2, rx, "Source example(s)"[:half])
                 stdscr.addstr(2, rx + half + 2, "Generated memory"[:half])
                 stdscr.vline(3, rx + half, ord('|'), visible_h)
-                left_lines = self.wrap(item.preview, half - 1)
-                right_text = item.meta.get("memory_text", item.label)
+                left_lines = self.wrap(current_item.preview, half - 1)
+                right_text = str(current_item.meta.get("memory_text", current_item.label))
                 extras = []
-                if item.meta.get("rationale"):
-                    extras.append(f"rationale: {item.meta['rationale']}")
-                if item.meta.get("contradictions"):
+                if current_item.meta.get("rationale"):
+                    extras.append(f"rationale: {current_item.meta['rationale']}")
+                if current_item.meta.get("contradictions"):
                     extras.append("possible contradictions:")
-                    extras.extend(f"- {x}" for x in item.meta["contradictions"])
+                    extras.extend(f"- {x}" for x in current_item.meta["contradictions"])
                 right_lines = self.wrap(right_text + ("\n\n" + "\n".join(extras) if extras else ""), half - 1)
                 for i in range(min(visible_h, max(len(left_lines), len(right_lines)))):
                     if i < len(left_lines):
@@ -183,7 +180,7 @@ class App:
                     if i < len(right_lines):
                         stdscr.addstr(3 + i, rx + half + 2, right_lines[i][:half - 1])
             else:
-                body = item.meta.get("final") if self.preview_final else item.preview
+                body = str(current_item.meta.get("final", current_item.preview)) if self.preview_final else current_item.preview
                 for i, line in enumerate(self.wrap(body, rw)[:visible_h]):
                     stdscr.addstr(3 + i, rx, line[:rw])
 
@@ -201,7 +198,9 @@ class App:
         idx = pane.scroll + row
         if 0 <= idx < len(pane.filtered):
             pane.cursor = idx
-            pane.current_item().selected = not pane.current_item().selected
+            current = pane.current_item()
+            if current is not None:
+                current.selected = not current.selected
 
     def run(self, stdscr) -> int:
         curses.curs_set(0)
@@ -220,8 +219,9 @@ class App:
             elif ch in (curses.KEY_DOWN, ord('j')):
                 pane.cursor = min(max(0, len(pane.filtered) - 1), pane.cursor + 1)
             elif ch == ord(' '):
-                if pane.current_item():
-                    pane.current_item().selected = not pane.current_item().selected
+                current = pane.current_item()
+                if current is not None:
+                    current.selected = not current.selected
             elif ch == ord('a'):
                 for idx in (pane.filtered if pane.query else range(len(pane.items))):
                     pane.items[idx].selected = True
@@ -246,15 +246,16 @@ class App:
                     pane.cursor = min(max(int(raw) - 1, 0), max(0, len(pane.filtered) - 1))
             elif ch == ord('p'):
                 self.preview_final = not self.preview_final
-            elif ch == ord('e') and pane.name == "Memory" and pane.current_item():
-                item = pane.current_item()
-                new_text = self.prompt(stdscr, "Edit memory text: ").strip()
-                if new_text:
-                    item.meta["memory_text"] = new_text
-                    item.meta["final"] = new_text
-                    item.meta["edited"] = True
-                    item.label = f"[edited] {new_text}"
-                    self.status = "Edited memory item"
+            elif ch == ord('e') and pane.name == "Memory":
+                current = pane.current_item()
+                if current is not None:
+                    new_text = self.prompt(stdscr, "Edit memory text: ").strip()
+                    if new_text:
+                        current.meta["memory_text"] = new_text
+                        current.meta["final"] = new_text
+                        current.meta["edited"] = True
+                        current.label = f"[edited] {new_text}"
+                        self.status = "Edited memory item"
             elif ch == ord('s'):
                 self.save()
             elif ch == curses.KEY_MOUSE:
@@ -262,9 +263,9 @@ class App:
                     _, _, my, _, state = curses.getmouse()
                     if state & curses.BUTTON1_CLICKED:
                         self.handle_click(my, curses.LINES)
-                    elif state & curses.BUTTON4_PRESSED:
+                    elif state & getattr(curses, "BUTTON4_PRESSED", 0):
                         pane.cursor = max(0, pane.cursor - 3)
-                    elif state & curses.BUTTON5_PRESSED:
+                    elif state & getattr(curses, "BUTTON5_PRESSED", 0):
                         pane.cursor = min(max(0, len(pane.filtered) - 1), pane.cursor + 3)
                 except curses.error:
                     pass

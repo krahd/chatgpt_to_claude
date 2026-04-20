@@ -1,4 +1,4 @@
-import json, subprocess, tempfile, zipfile
+import json, shutil, subprocess, sys, tempfile, zipfile
 from pathlib import Path
 
 with tempfile.TemporaryDirectory() as td:
@@ -8,7 +8,12 @@ with tempfile.TemporaryDirectory() as td:
     with zipfile.ZipFile(export_zip, "w") as zf:
         zf.writestr("conversations.json", json.dumps(payload))
     out = td / "out"
-    subprocess.run(["chatgpt-to-claude", str(export_zip), "-o", str(out)], check=True)
+    cli = shutil.which("chatgpt-to-claude")
+    if cli:
+        cmd = [cli, str(export_zip), "-o", str(out)]
+    else:
+        cmd = [sys.executable, str(Path(__file__).resolve().parents[1] / "migrate_chatgpt_to_claude.py"), str(export_zip), "-o", str(out)]
+    subprocess.run(cmd, check=True)
     assert (out / "manifest.json").exists()
     assert (out / "claude_memory_import.json").exists()
 print("smoke ok")

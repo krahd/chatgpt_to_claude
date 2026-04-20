@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from migration_core import collect_memory_candidates, dedupe_memory_items, estimate_tokens, parse_conversations, read_conversations_json, search_conversations
+from migration_core import collect_memory_candidates, dedupe_memory_items, estimate_tokens, parse_conversations, read_conversations_json, search_conversations  # noqa: E402
 
 
 class ToolkitTests(unittest.TestCase):

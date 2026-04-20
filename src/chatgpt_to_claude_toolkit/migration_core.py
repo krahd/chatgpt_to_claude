@@ -392,7 +392,8 @@ def infer_topics(conversations: list[Conversation]) -> dict[str, list[Conversati
 def bundle_topics_with_budgets(topics: dict[str, list[Conversation]], token_budget: int) -> dict[str, list[Conversation]]:
     bundles: dict[str, list[Conversation]] = {}
     for topic, convs in topics.items():
-        running, selected = 0, []
+        running: int = 0
+        selected: list[Conversation] = []
         for conv in sorted(convs, key=lambda c: (c.update_time or 0), reverse=True):
             approx = estimate_tokens(conversation_to_markdown(conv))
             if running + approx > token_budget and selected:
@@ -551,7 +552,7 @@ def build_attachment_previews(output_dir: Path, limit_chars: int = 800) -> None:
 
 
 def validate_output_dir(output_dir: Path) -> dict[str, Any]:
-    report = {"ok": True, "errors": [], "warnings": []}
+    report: dict[str, Any] = {"ok": True, "errors": [], "warnings": []}
     expected = [
         output_dir / "manifest.json",
         output_dir / "migration_state.json",
