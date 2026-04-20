@@ -1,0 +1,4 @@
+build
+ruff
+mypy
+playwright

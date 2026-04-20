@@ -1,0 +1,146 @@
+Metadata-Version: 2.4
+Name: chatgpt-to-claude-toolkit
+Version: 0.1.0
+Summary: Toolkit for reviewing and migrating ChatGPT exports into Claude-friendly bundles
+Author: OpenAI
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Provides-Extra: browser
+Requires-Dist: playwright; extra == "browser"
+
+# ChatGPT → Claude migration toolkit
+
+This toolkit converts a ChatGPT export zip into a reviewable migration package for Claude.
+
+## Requirements
+
+- Python 3.11+ recommended
+- `playwright` only if you want browser automation
+
+Install browser automation dependencies only when needed:
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+## Main capabilities
+
+- parse common ChatGPT export structures, including some alternate JSON filenames
+- export conversations to Markdown
+- create preview files alongside full exports
+- extract attachment-like files from the export zip
+- classify extracted attachments into broad categories and summarise them
+- extract candidate memory items with confidence, rationale, stale hints, sensitivity flags, and examples
+- deduplicate near-duplicate memory items
+- group conversations into topic bundles
+- generate upload plans, validation reports, manual-attention reports, an HTML summary, and export summaries
+- provide a TUI for review, filtering, sorting, and inline memory editing
+- track migration progress in `migration_state.json`
+
+## Typical workflow
+
+```bash
+python chatgpt_migration_tui.py /path/to/chatgpt-export.zip ./selection.json
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --selection-file ./selection.json
+```
+
+## Direct export
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --token-budget 120000
+```
+
+## Search-filtered export
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --query "kivy British English"
+```
+
+## Redaction
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --redact "sk-[A-Za-z0-9]+" --redact "user@example.com"
+```
+
+## Review migration state
+
+```bash
+python review_state.py ./out/migration_state.json --mark-uploaded projects/ai.md conversations/0001_test.md --note "Uploaded core bundles"
+```
+
+## TUI controls
+
+- `Tab` switch pane
+- `↑ ↓` or `j k` move
+- `Space` toggle selection
+- `/` search current pane
+- `t` cycle sort mode
+- `g` jump to index
+- `p` switch preview mode
+- `e` edit current memory item
+- `a` select all in current pane
+- `n` deselect all in current pane
+- `s` save selection file
+- `q` quit
+- mouse click toggles row
+- mouse wheel scrolls
+
+## Generated outputs
+
+- `conversations/`
+- `previews/`
+- `projects/`
+- `attachments/`
+- `claude_memory_import.md`
+- `claude_memory_import.json`
+- `memory_review.tsv`
+- `manifest.json`
+- `attachments_manifest.json`
+- `project_plan.json`
+- `migration_strategy.md`
+- `migration_state.json`
+- `conversation_report.tsv`
+- `upload_plan.json`
+- `validation_report.json`
+- `manual_attention.md`
+- `migration_summary.html`
+- `browser_automation.py`
+
+## Known limits
+
+- memory extraction is heuristic rather than model-based
+- contradiction detection is approximate
+- token estimation is approximate
+- browser automation is guided and selector-dependent
+- unusual ChatGPT export formats may still need parser work
+
+## Skip attachment extraction
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --no-attachments
+```
+
+## Dry run
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip --dry-run --after 2024-01-01 --before 2025-01-01
+```
+
+## Batch large exports
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --max-conversations 100
+```
+
+## Title filters
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --title-include "kivy" --title-exclude "old"
+```
+
+## Disable parts of the export
+
+```bash
+python migrate_chatgpt_to_claude.py /path/to/chatgpt-export.zip -o ./out --no-memory --no-projects
+```

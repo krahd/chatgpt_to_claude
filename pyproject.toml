@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatgpt-to-claude-toolkit"
+version = "0.3.0"
+description = "Toolkit for reviewing and migrating ChatGPT exports into Claude-friendly bundles"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "OpenAI"}]
+dependencies = []
+
+[project.optional-dependencies]
+browser = ["playwright"]
+dev = ["build", "ruff", "mypy"]
+
+[project.scripts]
+chatgpt-to-claude = "chatgpt_to_claude_toolkit.migrate_chatgpt_to_claude:main"
+chatgpt-to-claude-tui = "chatgpt_to_claude_toolkit.chatgpt_migration_tui:main"
+chatgpt-to-claude-review-state = "chatgpt_to_claude_toolkit.review_state:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true

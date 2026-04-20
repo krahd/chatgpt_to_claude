@@ -1,0 +1,8 @@
+{
+  "selected_conversations": ["1", "2"],
+  "selected_memory_items": ["1", "3"],
+  "selected_topics": ["ai", "coding"],
+  "edited_memory_items": {
+    "1": "User prefers British English."
+  }
+}

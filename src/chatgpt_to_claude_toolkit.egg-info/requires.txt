@@ -1,0 +1,8 @@
+
+[browser]
+playwright
+
+[dev]
+build
+ruff
+mypy

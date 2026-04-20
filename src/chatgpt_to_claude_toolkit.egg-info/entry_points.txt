@@ -1,0 +1,4 @@
+[console_scripts]
+chatgpt-to-claude = chatgpt_to_claude_toolkit.migrate_chatgpt_to_claude:main
+chatgpt-to-claude-review-state = chatgpt_to_claude_toolkit.review_state:main
+chatgpt-to-claude-tui = chatgpt_to_claude_toolkit.chatgpt_migration_tui:main
