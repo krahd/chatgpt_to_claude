@@ -9,7 +9,7 @@ It provides command-line tools and a small TUI to:
 - extract and summarise attachments
 - produce migration reports and traceable memory provenance
 
-Current release: `v0.0.1`
+Current release: `v0.0.2`
 
 See `README.md` for installation, usage, tests, and release instructions.
 See `CONTRIBUTING.md` and `CHANGELOG.md` for contribution and release notes.

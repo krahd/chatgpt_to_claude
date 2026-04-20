@@ -1,7 +1,7 @@
 # ChatGPT → Claude migration toolkit
 
 Toolkit for reviewing and migrating ChatGPT exports into Claude-friendly bundles.
-Current release: `v0.0.1`.
+Current release: `v0.0.2`.
 
 ## Install
 
