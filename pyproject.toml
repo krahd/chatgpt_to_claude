@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chatgpt-to-claude-toolkit"
-version = "0.3.0"
+version = "0.0.1"
 description = "Toolkit for reviewing and migrating ChatGPT exports into Claude-friendly bundles"
 readme = "README.md"
 requires-python = ">=3.11"

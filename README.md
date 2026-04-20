@@ -1,6 +1,7 @@
 # ChatGPT → Claude migration toolkit
 
 Toolkit for reviewing and migrating ChatGPT exports into Claude-friendly bundles.
+Current release: `v0.0.1`.
 
 ## Install
 
@@ -113,3 +114,29 @@ chatgpt-to-claude /path/to/chatgpt-export.zip -o ./out --stale-before 2024-01-01
 
 - `browser_config.sample.json`
 - `selection_mismatch_report.json`
+## Release management
+
+For each release:
+
+1. update version values in `pyproject.toml` and `src/chatgpt_to_claude_toolkit/__init__.py`
+2. update `CHANGELOG.md`
+3. run validation commands:
+
+```bash
+python -m unittest discover -s tests -v
+python -m py_compile src/chatgpt_to_claude_toolkit/*.py
+```
+
+4. create and push the tag (example for `v0.0.1`):
+
+```bash
+VERSION=v0.0.1
+git tag -a "$VERSION" -m "Release $VERSION"
+git push origin main --follow-tags
+```
+
+5. publish the GitHub release:
+
+```bash
+gh release create "$VERSION" --title "$VERSION" --notes-file CHANGELOG.md
+```
