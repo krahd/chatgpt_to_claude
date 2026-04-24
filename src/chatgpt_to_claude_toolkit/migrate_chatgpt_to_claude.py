@@ -4,13 +4,20 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import html as html_mod
 import json
 import shutil
+import sys
+import zipfile
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .migration_core import (
+    AttachmentRecord,
+    Conversation,
+    MemoryItem,
     build_attachment_previews,
     build_upload_plan,
     bundle_topics_with_budgets,
@@ -71,15 +78,19 @@ def parse_numeric_selection(raw: str, max_index: int) -> set[int]:
         part = part.strip()
         if not part:
             continue
-        if "-" in part:
-            a, b = part.split("-", 1)
-            for idx in range(min(int(a), int(b)), max(int(a), int(b)) + 1):
+        try:
+            if "-" in part:
+                a, b = part.split("-", 1)
+                lo, hi = int(a), int(b)
+                for idx in range(min(lo, hi), max(lo, hi) + 1):
+                    if 1 <= idx <= max_index:
+                        selected.add(idx)
+            else:
+                idx = int(part)
                 if 1 <= idx <= max_index:
                     selected.add(idx)
-        else:
-            idx = int(part)
-            if 1 <= idx <= max_index:
-                selected.add(idx)
+        except ValueError:
+            print(f"Warning: ignoring unrecognised selection token {part!r}", file=sys.stderr)
     return selected
 
 
@@ -94,16 +105,26 @@ def _selection_list(data: dict[str, Any], key: str, legacy_key: str) -> list[Any
     return value
 
 
-def validate_selection_file(path: Path) -> dict:
+def _load_selection_data(path: Path) -> dict[str, Any]:
+    """Read and validate the raw selection JSON dict (shared by validate and apply)."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Selection file must contain a JSON object.")
-    selected_conversations = _selection_list(data, "selected_conversations", "conversation_indices")
-    selected_memory_items = _selection_list(data, "selected_memory_items", "memory_indices")
-    selected_topics = _selection_list(data, "selected_topics", "topics")
     edited_memory_items = data.get("edited_memory_items", {})
     if not isinstance(edited_memory_items, dict):
         raise ValueError("Selection file field 'edited_memory_items' must be an object.")
+    # Eagerly validate list fields so errors surface early.
+    _selection_list(data, "selected_conversations", "conversation_indices")
+    _selection_list(data, "selected_memory_items", "memory_indices")
+    _selection_list(data, "selected_topics", "topics")
+    return data
+
+
+def validate_selection_file(path: Path) -> dict[str, Any]:
+    data = _load_selection_data(path)
+    selected_conversations = _selection_list(data, "selected_conversations", "conversation_indices")
+    selected_memory_items = _selection_list(data, "selected_memory_items", "memory_indices")
+    selected_topics = _selection_list(data, "selected_topics", "topics")
     return {
         "conversation_count": len(selected_conversations),
         "memory_count": len(selected_memory_items),
@@ -114,34 +135,36 @@ def validate_selection_file(path: Path) -> dict:
     }
 
 
-def write_selection_summary(output_dir: Path, summary: dict | None) -> None:
+def write_selection_summary(output_dir: Path, summary: dict[str, Any] | None) -> None:
     if summary is None:
         return
     (output_dir / "selection_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-def apply_selection_file(conversations, memory_items, topics, path: Path):
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Selection file must contain a JSON object.")
-    selected_conversations = _selection_list(data, "selected_conversations", "conversation_indices")
-    selected_memory_items = _selection_list(data, "selected_memory_items", "memory_indices")
+
+def apply_selection_file(
+    conversations: list[Conversation],
+    memory_items: list[MemoryItem],
+    topics: dict[str, list[Conversation]],
+    data: dict[str, Any],
+) -> tuple[list[Conversation], list[MemoryItem], dict[str, list[Conversation]]]:
+    """Apply a pre-loaded (and validated) selection dict to the working sets."""
+    selected_conversations_raw = _selection_list(data, "selected_conversations", "conversation_indices")
+    selected_memory_items_raw = _selection_list(data, "selected_memory_items", "memory_indices")
     selected_topics_raw = _selection_list(data, "selected_topics", "topics")
-    edited_memory_items = data.get("edited_memory_items", {})
-    if not isinstance(edited_memory_items, dict):
-        raise ValueError("Selection file field 'edited_memory_items' must be an object.")
-    conv_keys = {str(x) for x in selected_conversations}
-    mem_keys = {str(x) for x in selected_memory_items}
+    edited_memory_items: dict[str, Any] = data.get("edited_memory_items", {})
+    conv_keys = {str(x) for x in selected_conversations_raw}
+    mem_keys = {str(x) for x in selected_memory_items_raw}
     topic_keys = {str(x) for x in selected_topics_raw}
     conversation_map = {str(c.source_index): c for c in conversations}
     memory_map = {str(idx): m for idx, m in enumerate(memory_items, start=1)}
-    selected_conversations = [conversation_map[k] for k in conv_keys if k in conversation_map] if conv_keys else list(conversations)
-    selected_memory = [memory_map[k] for k in mem_keys if k in memory_map] if mem_keys else list(memory_items)
+    out_conversations = [conversation_map[k] for k in conv_keys if k in conversation_map] if conv_keys else list(conversations)
+    out_memory = [memory_map[k] for k in mem_keys if k in memory_map] if mem_keys else list(memory_items)
     edited = {str(k): str(v) for k, v in edited_memory_items.items() if v}
     for key, item in memory_map.items():
         if key in edited and edited[key]:
             item.text = edited[key]
-    selected_topics = {k: v for k, v in topics.items() if not topic_keys or k in topic_keys}
-    return selected_conversations, selected_memory, selected_topics
+    out_topics = {k: v for k, v in topics.items() if not topic_keys or k in topic_keys}
+    return out_conversations, out_memory, out_topics
 
 
 def maybe_clear_output_dir(output_dir: Path) -> None:
@@ -154,7 +177,7 @@ def maybe_clear_output_dir(output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
 
-def choose_memory_items_interactively(items):
+def choose_memory_items_interactively(items: list[MemoryItem]) -> list[MemoryItem]:
     print("\nMemory candidates:\n")
     for i, item in enumerate(items, start=1):
         flags = f" flags={','.join(item.sensitivity_flags)}" if item.sensitivity_flags else ""
@@ -166,7 +189,7 @@ def choose_memory_items_interactively(items):
     return [item for idx, item in enumerate(items, start=1) if idx in sel]
 
 
-def choose_topics_interactively(topics):
+def choose_topics_interactively(topics: dict[str, list[Conversation]]) -> dict[str, list[Conversation]]:
     names = sorted(topics)
     print("\nTopic bundles:\n")
     for i, name in enumerate(names, start=1):
@@ -178,7 +201,7 @@ def choose_topics_interactively(topics):
     return {name: topics[name] for idx, name in enumerate(names, start=1) if idx in sel}
 
 
-def choose_conversations_interactively(conversations):
+def choose_conversations_interactively(conversations: list[Conversation]) -> list[Conversation]:
     print("\nConversations:\n")
     for i, conv in enumerate(conversations, start=1):
         print(f"{i:>4}. [{ts_to_iso(conv.create_time) or 'unknown'}] {conv.title} ({len(conv.messages)} messages)")
@@ -189,7 +212,12 @@ def choose_conversations_interactively(conversations):
     return [conv for idx, conv in enumerate(conversations, start=1) if idx in sel]
 
 
-def write_memory_files(selected_items, output_dir: Path, redactions=None) -> None:
+def _tsv_safe(value: str) -> str:
+    """Remove tab and newline characters that would corrupt TSV rows."""
+    return str(value).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+def write_memory_files(selected_items: list[MemoryItem], output_dir: Path, redactions: list[str] | None = None) -> None:
     redactions = redactions or []
     review = output_dir / "memory_review.tsv"
     md = output_dir / "claude_memory_import.md"
@@ -202,21 +230,36 @@ def write_memory_files(selected_items, output_dir: Path, redactions=None) -> Non
         f.write("```\n")
     payload = []
     for item in selected_items:
-        row = dict(item.__dict__)
+        row = asdict(item)
         row["text"] = redact_text(row["text"], redactions)
         row["examples"] = [redact_text(x, redactions) for x in row.get("examples", [])]
         payload.append(row)
     js.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    prov.write_text(json.dumps([{"text": row["text"], "source_refs": row.get("source_refs", []), "examples": row.get("examples", [])} for row in payload], ensure_ascii=False, indent=2), encoding="utf-8")
+    prov.write_text(
+        json.dumps(
+            [{"text": row["text"], "source_refs": row.get("source_refs", []), "examples": row.get("examples", [])} for row in payload],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     with review.open("w", encoding="utf-8") as f:
         f.write("keep\tcategory\tconfidence\tcount\tfirst_seen\tstale\tsensitivity\trationale\ttext\texamples\tcontradictions\tsource_refs\n")
         for item in selected_items:
+            redacted_text = _tsv_safe(redact_text(item.text, redactions))
+            examples_col = _tsv_safe(" | ".join(redact_text(x, redactions) for x in item.examples))
+            contradictions_col = _tsv_safe(" | ".join(redact_text(x, redactions) for x in item.contradictions))
+            source_refs_col = _tsv_safe(" | ".join(item.source_refs))
+            sensitivity_col = _tsv_safe(",".join(item.sensitivity_flags))
+            rationale_col = _tsv_safe(item.rationale)
             f.write(
-                f"yes\t{item.category}\t{item.confidence}\t{item.count}\t{item.first_seen or ''}\t{item.stale}\t{','.join(item.sensitivity_flags)}\t{item.rationale}\t{redact_text(item.text, redactions)}\t{' | '.join(redact_text(x, redactions) for x in item.examples)}\t{' | '.join(redact_text(x, redactions) for x in item.contradictions)}\t{' | '.join(item.source_refs)}\n"
+                f"yes\t{item.category}\t{item.confidence}\t{item.count}\t{item.first_seen or ''}"
+                f"\t{item.stale}\t{sensitivity_col}\t{rationale_col}\t{redacted_text}"
+                f"\t{examples_col}\t{contradictions_col}\t{source_refs_col}\n"
             )
 
 
-def write_conversations(conversations, output_dir: Path, redactions=None, report_only: bool = False) -> None:
+def write_conversations(conversations: list[Conversation], output_dir: Path, redactions: list[str] | None = None, report_only: bool = False) -> None:
     redactions = redactions or []
     conv_dir = output_dir / "conversations"
     preview_dir = output_dir / "previews"
@@ -252,7 +295,7 @@ def write_conversations(conversations, output_dir: Path, redactions=None, report
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def write_projects(topics, output_dir: Path, token_budget: int, redactions=None, report_only: bool = False) -> None:
+def write_projects(topics: dict[str, list[Conversation]], output_dir: Path, token_budget: int, redactions: list[str] | None = None, report_only: bool = False) -> None:
     redactions = redactions or []
     proj_dir = output_dir / "projects"
     proj_dir.mkdir(parents=True, exist_ok=True)
@@ -276,7 +319,7 @@ def write_projects(topics, output_dir: Path, token_budget: int, redactions=None,
     (output_dir / "project_plan.md").write_text("\n".join(lines_summary), encoding="utf-8")
 
 
-def write_attachment_summary(attachments, output_dir: Path) -> None:
+def write_attachment_summary(attachments: list[AttachmentRecord], output_dir: Path) -> None:
     counts: dict[str, int] = {}
     total_size = 0
     for item in attachments:
@@ -293,11 +336,11 @@ def write_attachment_summary(attachments, output_dir: Path) -> None:
 
 
 
-def display_title(conv) -> str:
+def display_title(conv: Conversation) -> str:
     title = (conv.title or "").strip()
     return title if title else f"Untitled conversation {conv.source_index}"
 
-def filter_conversations_by_ids(conversations, ids_file: Path | None):
+def filter_conversations_by_ids(conversations: list[Conversation], ids_file: Path | None) -> list[Conversation]:
     if not ids_file or not ids_file.exists():
         return conversations
     wanted = {line.strip() for line in ids_file.read_text(encoding="utf-8").splitlines() if line.strip()}
@@ -498,6 +541,7 @@ def write_reports(output_dir: Path) -> None:
                 f.write("  - stale: true\n")
         if not risky:
             f.write("- None\n")
+    e = html_mod.escape
     html_lines = [
         "<html><head><meta charset='utf-8'><title>Migration Summary</title>",
         "<style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:.4rem;text-align:left;}code{background:#f4f4f4;padding:.1rem .3rem;} .warn{color:#9a6700;} .err{color:#b00020;}</style>",
@@ -505,15 +549,22 @@ def write_reports(output_dir: Path) -> None:
         "<h1>Migration Summary</h1>",
         f"<p>Conversations: <strong>{len(manifest)}</strong> | Memory items: <strong>{len(memory)}</strong></p>",
         "<h2>Validation</h2>",
-        "<ul>" + ''.join(f"<li class='warn'>{w}</li>" for w in validation.get('warnings', [])) + ''.join(f"<li class='err'>{e}</li>" for e in validation.get('errors', [])) + "</ul>",
+        "<ul>" + "".join(f"<li class='warn'>{e(w)}</li>" for w in validation.get("warnings", [])) + "".join(f"<li class='err'>{e(err)}</li>" for err in validation.get("errors", [])) + "</ul>",
         "<h2>Conversations</h2><table><tr><th>File</th><th>Title</th><th>Created</th><th>Messages</th><th>Tokens</th></tr>",
     ]
     for row in manifest:
-        html_lines.append(f"<tr><td><code>{row['file']}</code></td><td>{row['title']}</td><td>{row.get('created','')}</td><td>{row.get('message_count','')}</td><td>{row.get('estimated_tokens','')}</td></tr>")
+        html_lines.append(
+            f"<tr><td><code>{e(row['file'])}</code></td><td>{e(row['title'])}</td>"
+            f"<td>{e(row.get('created', ''))}</td><td>{row.get('message_count', '')}</td>"
+            f"<td>{row.get('estimated_tokens', '')}</td></tr>"
+        )
     html_lines.append("</table><h2>Memory needing attention</h2><ul>")
     for item in risky[:200]:
-        flags = ', '.join(item.get('sensitivity_flags', []))
-        html_lines.append(f"<li><code>{item.get('category','')}</code> {item.get('text','')} {'(' + flags + ')' if flags else ''}</li>")
+        flags = ", ".join(e(f) for f in item.get("sensitivity_flags", []))
+        html_lines.append(
+            f"<li><code>{e(item.get('category', ''))}</code> {e(item.get('text', ''))}"
+            f"{' (' + flags + ')' if flags else ''}</li>"
+        )
     html_lines.append("</ul></body></html>")
     (output_dir / "migration_summary.html").write_text(''.join(html_lines), encoding="utf-8")
 
@@ -579,7 +630,14 @@ python review_state.py ./out/migration_state.json --mark-uploaded projects/ai.md
 
 def main() -> int:
     args = parse_args()
-    raw = read_conversations_json(args.export_zip)
+    try:
+        raw = read_conversations_json(args.export_zip)
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except (zipfile.BadZipFile, json.JSONDecodeError, ValueError) as exc:
+        print(f"Error reading export zip: {exc}", file=sys.stderr)
+        return 1
     conversations = parse_conversations(raw)
     if args.interactive:
         maybe_clear_output_dir(args.output_dir)
@@ -599,8 +657,19 @@ def main() -> int:
     topics = {} if args.no_projects else infer_topics(conversations)
     selection_summary = None
     if args.selection_file is not None:
-        selection_summary = validate_selection_file(args.selection_file)
-        conversations, memory_items, topics = apply_selection_file(conversations, memory_items, topics, args.selection_file)
+        selection_data = _load_selection_data(args.selection_file)
+        selected_conversations_raw = _selection_list(selection_data, "selected_conversations", "conversation_indices")
+        selected_memory_items_raw = _selection_list(selection_data, "selected_memory_items", "memory_indices")
+        selected_topics_raw = _selection_list(selection_data, "selected_topics", "topics")
+        selection_summary = {
+            "conversation_count": len(selected_conversations_raw),
+            "memory_count": len(selected_memory_items_raw),
+            "topic_count": len(selected_topics_raw),
+            "selected_conversations": selected_conversations_raw,
+            "selected_memory_items": selected_memory_items_raw,
+            "selected_topics": selected_topics_raw,
+        }
+        conversations, memory_items, topics = apply_selection_file(conversations, memory_items, topics, selection_data)
     elif args.interactive:
         memory_items = choose_memory_items_interactively(memory_items)
         topics = choose_topics_interactively(topics)

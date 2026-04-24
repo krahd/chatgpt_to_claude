@@ -70,6 +70,7 @@ class App:
         topics = infer_topics(convs)
         self.export_zip = export_zip
         self.output_file = output_file
+        self.all_convs = convs  # cached; avoids re-parsing the zip on each search
         self.preview_final = False
         self.status = "Ready"
 
@@ -231,9 +232,8 @@ class App:
             elif ch == ord('/'):
                 pane.query = self.prompt(stdscr, "Search: ")
                 if pane.name == "Conversations" and pane.query.strip() and not any(pane.query.lower() in it.label.lower() for it in pane.items):
-                    # semantic/fuzzy refill for conversation pane
-                    raw = read_conversations_json(self.export_zip)
-                    convs = search_conversations(parse_conversations(raw), pane.query, limit=50)
+                    # semantic/fuzzy refill for conversation pane — uses cached convs, no re-parse
+                    convs = search_conversations(self.all_convs, pane.query, limit=50)
                     pane.items = [PaneItem(str(c.source_index), f"[{ts_to_iso(c.create_time) or 'unknown'}] {c.title} ({len(c.messages)} msgs)", summarise_conversation(c), True, {"final": conversation_to_markdown(c), "sort_size": estimate_tokens(conversation_to_markdown(c))}) for c in convs]
                 pane.apply_filter()
                 self.status = f"Filtered {pane.name}"

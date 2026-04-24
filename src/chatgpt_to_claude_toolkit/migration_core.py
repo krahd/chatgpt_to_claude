@@ -5,6 +5,7 @@ import difflib
 import json
 import math
 import re
+import shutil
 import zipfile
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
@@ -317,7 +318,7 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
                             if ref not in source_refs[key] and len(source_refs[key]) < 5:
                                 source_refs[key].append(ref)
                             matched = True
-                if lowered.startswith(("my ", "i ", "i'm ", "i am ")) and len(sentence) >= 18:
+                if not matched and lowered.startswith(("my ", "i ", "i'm ", "i am ")) and len(sentence) >= 18:
                     candidate = normalise_memory_text(sentence)
                     if 18 <= len(candidate) <= 220:
                         key = ("personal_context", candidate)
@@ -329,8 +330,6 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
                         ref = f"conv:{conv.source_index}/msg:{msg.id}"
                         if ref not in source_refs[key] and len(source_refs[key]) < 5:
                             source_refs[key].append(ref)
-                if matched:
-                    continue
 
     items: list[MemoryItem] = []
     for (category, text), count in counts.items():
@@ -395,9 +394,11 @@ def bundle_topics_with_budgets(topics: dict[str, list[Conversation]], token_budg
         running: int = 0
         selected: list[Conversation] = []
         for conv in sorted(convs, key=lambda c: (c.update_time or 0), reverse=True):
+            if running >= token_budget:
+                break
             approx = estimate_tokens(conversation_to_markdown(conv))
             if running + approx > token_budget and selected:
-                continue
+                continue  # try smaller remaining conversations before giving up
             selected.append(conv)
             running += approx
         bundles[topic] = selected
@@ -488,7 +489,7 @@ def extract_attachments(export_zip: Path, output_dir: Path) -> list[AttachmentRe
                 target = attachments_dir / f"{stem}-{counter}{suffix}"
                 counter += 1
             with zf.open(info) as src, open(target, "wb") as dst:
-                dst.write(src.read())
+                shutil.copyfileobj(src, dst)
             category = classify_attachment(target)
             kind = "text" if category == "text" else "binary"
             records.append(AttachmentRecord(info.filename, str(target.relative_to(output_dir)), kind, info.file_size, category))

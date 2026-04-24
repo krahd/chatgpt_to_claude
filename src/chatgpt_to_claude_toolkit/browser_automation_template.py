@@ -17,9 +17,9 @@ def save_json(path: Path, payload) -> None:
 
 
 def validate_args(args) -> None:
-    if args.mode in {"memory", "guided"} and not args.memory_file and args.mode != "uploads":
+    if args.mode in {"memory", "guided"} and not args.memory_file:
         print("Warning: no memory file provided.")
-    if args.mode in {"uploads", "guided"} and not args.uploads_dir and args.mode != "memory":
+    if args.mode in {"uploads", "guided"} and not args.uploads_dir:
         print("Warning: no uploads directory provided.")
 
 
@@ -69,7 +69,7 @@ def main():
         page = browser.new_page()
 
         if args.mode in {"memory", "guided"} and args.memory_file:
-            page.goto("https://claude.com/import-memory", wait_until="domcontentloaded")
+            page.goto(args.project_url, wait_until="domcontentloaded")
             page.evaluate("navigator.clipboard.writeText(arguments[0])", args.memory_file.read_text(encoding="utf-8"))
             input("Memory content copied to clipboard. Paste it into Claude, then press Enter here.")
             if args.state_file:

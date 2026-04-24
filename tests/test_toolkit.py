@@ -9,9 +9,16 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
-from migration_core import collect_memory_candidates, dedupe_memory_items, estimate_tokens, parse_conversations, read_conversations_json, search_conversations  # noqa: E402
+from chatgpt_to_claude_toolkit.migration_core import (  # noqa: E402
+    collect_memory_candidates,
+    dedupe_memory_items,
+    estimate_tokens,
+    parse_conversations,
+    read_conversations_json,
+    search_conversations,
+)
 
 
 class ToolkitTests(unittest.TestCase):
@@ -122,10 +129,6 @@ class ToolkitTests(unittest.TestCase):
 
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ExtraCliTests(unittest.TestCase):
     def test_report_only_and_ids_filter(self):
         with tempfile.TemporaryDirectory() as td:
@@ -180,3 +183,6 @@ class SelectionValidationTests(unittest.TestCase):
             proc = subprocess.run([sys.executable, str(ROOT / "migrate_chatgpt_to_claude.py"), str(z), "-o", str(out), "--selection-file", str(sel)], capture_output=True, text=True)
             self.assertNotEqual(proc.returncode, 0)
 
+
+if __name__ == "__main__":
+    unittest.main()
