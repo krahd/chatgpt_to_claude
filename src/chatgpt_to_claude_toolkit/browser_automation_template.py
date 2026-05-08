@@ -24,13 +24,28 @@ def validate_args(args) -> None:
 
 
 def try_set_input_files(page, selector: str, files: list[str], retries: int = 2) -> bool:
-    for attempt in range(retries + 1):
-        try:
-            page.locator(selector).first.set_input_files(files)
-            return True
-        except Exception as exc:
-            print(f"Upload trigger attempt {attempt + 1} failed: {exc}")
-            time.sleep(1)
+    # Accept either a single selector or try fallbacks when the provided one
+    # does not match. This makes the automation more resilient to small UI
+    # changes.
+    selectors: list[str] = [selector] if isinstance(selector, str) and selector else []
+    selectors += ["input[type=file]", "input[name*='file']",
+                  "input[name*='upload']", "input[accept]"]
+    seen = set()
+    for sel in selectors:
+        if not sel or sel in seen:
+            continue
+        seen.add(sel)
+        for attempt in range(retries + 1):
+            try:
+                loc = page.locator(sel)
+                # ensure element exists
+                if getattr(loc, "count", lambda: 0)() == 0:
+                    raise RuntimeError(f"No elements found for selector: {sel}")
+                loc.first.set_input_files(files)
+                return True
+            except Exception as exc:
+                print(f"Upload trigger attempt {attempt + 1} for selector {sel} failed: {exc}")
+                time.sleep(1)
     return False
 
 
@@ -49,7 +64,8 @@ def main():
 
     validate_args(args)
     cfg = load_json(args.config, {"upload_input_selector": "input[type=file]"})
-    state = load_json(args.state_file, {"uploads": {}, "notes": []}) if args.state_file else {"uploads": {}, "notes": []}
+    state = load_json(args.state_file, {"uploads": {}, "notes": []}
+                      ) if args.state_file else {"uploads": {}, "notes": []}
     upload_plan = load_json(args.upload_plan, []) if args.upload_plan else []
 
     if args.dry_run:
@@ -65,15 +81,18 @@ def main():
         return
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch_persistent_context(user_data_dir=str(args.user_data_dir), headless=False)
+        browser = pw.chromium.launch_persistent_context(
+            user_data_dir=str(args.user_data_dir), headless=False)
         page = browser.new_page()
 
         if args.mode in {"memory", "guided"} and args.memory_file:
             page.goto(args.project_url, wait_until="domcontentloaded")
-            page.evaluate("navigator.clipboard.writeText(arguments[0])", args.memory_file.read_text(encoding="utf-8"))
+            page.evaluate(
+                "navigator.clipboard.writeText(arguments[0])", args.memory_file.read_text(encoding="utf-8"))
             input("Memory content copied to clipboard. Paste it into Claude, then press Enter here.")
             if args.state_file:
-                state.setdefault("uploads", {})[str(args.memory_file.name)] = {"status": "submitted"}
+                state.setdefault("uploads", {})[str(args.memory_file.name)] = {
+                    "status": "submitted"}
                 save_json(args.state_file, state)
 
         if args.mode in {"uploads", "guided"} and args.uploads_dir:

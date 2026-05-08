@@ -16,8 +16,10 @@ from typing import Any
 SYSTEM_AUTHORS = {"system", "tool", "developer"}
 USER_AUTHORS = {"user", "human"}
 ASSISTANT_AUTHORS = {"assistant", "model"}
-TEXT_EXTS = {".txt", ".md", ".markdown", ".py", ".json", ".csv", ".yaml", ".yml", ".html", ".js", ".ts", ".css", ".xml", ".rst"}
-BINARY_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".docx", ".pptx", ".xlsx", ".zip", ".mp3", ".wav", ".mp4", ".mov"}
+TEXT_EXTS = {".txt", ".md", ".markdown", ".py", ".json", ".csv",
+             ".yaml", ".yml", ".html", ".js", ".ts", ".css", ".xml", ".rst"}
+BINARY_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+               ".docx", ".pptx", ".xlsx", ".zip", ".mp3", ".wav", ".mp4", ".mov"}
 
 
 @dataclass
@@ -117,7 +119,10 @@ def sentence_split(text: str) -> list[str]:
 
 
 def normalise_memory_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip(" \n\t-•"))[:280].strip()
+    txt = re.sub(r"\s+", " ", text.strip(" \n\t-•"))
+    txt = txt.strip('"\'')
+    txt = re.sub(r"[\.\?\!]+$", "", txt).strip()
+    return txt[:280].strip()
 
 
 def estimate_tokens(text: str) -> int:
@@ -236,7 +241,8 @@ def read_conversations_json(export_zip: Path) -> Any:
             if lower.endswith('.json') and ('conversation' in lower or 'chat' in lower or lower == 'conversations.json'):
                 candidates.append(name)
         if 'conversations.json' in names:
-            candidates = ['conversations.json'] + [n for n in candidates if n != 'conversations.json']
+            candidates = ['conversations.json'] + \
+                [n for n in candidates if n != 'conversations.json']
         ordered = []
         seen = set()
         for item in candidates:
@@ -262,7 +268,8 @@ def read_conversations_json(export_zip: Path) -> Any:
                         return data
             except Exception:
                 continue
-        raise FileNotFoundError('Could not find a plausible conversations JSON file inside the zip export.')
+        raise FileNotFoundError(
+            'Could not find a plausible conversations JSON file inside the zip export.')
 
 
 def parse_conversations(raw: Any) -> list[Conversation]:
@@ -276,9 +283,11 @@ def parse_conversations(raw: Any) -> list[Conversation]:
         if isinstance(mapping, dict):
             messages = order_messages(mapping)
         elif isinstance(item.get("messages"), list):
-            msgs = [{"message": m, "id": m.get("id"), "parent": m.get("parent")} for m in item["messages"] if isinstance(m, dict)]
+            msgs = [{"message": m, "id": m.get("id"), "parent": m.get(
+                "parent")} for m in item["messages"] if isinstance(m, dict)]
             messages = order_messages({str(i): m for i, m in enumerate(msgs)})
-        conversations.append(Conversation(title, float(item["create_time"]) if isinstance(item.get("create_time"), (int, float)) else None, float(item["update_time"]) if isinstance(item.get("update_time"), (int, float)) else None, messages, idx))
+        conversations.append(Conversation(title, float(item["create_time"]) if isinstance(item.get("create_time"), (int, float)) else None, float(
+            item["update_time"]) if isinstance(item.get("update_time"), (int, float)) else None, messages, idx))
     return conversations
 
 
@@ -314,7 +323,10 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
                             rationales[key] = rationale
                             if sentence not in examples[key] and len(examples[key]) < 3:
                                 examples[key].append(sentence[:280])
-                            ref = f"conv:{conv.source_index}/msg:{msg.id}"
+                            # include a short conversation title slug and sentence snippet
+                            title_snip = slugify(conv.title, max_len=40)
+                            snip = sentence.strip().replace("\n", " ")[:80]
+                            ref = f"conv:{conv.source_index}/{title_snip}/msg:{msg.id}|{snip}"
                             if ref not in source_refs[key] and len(source_refs[key]) < 5:
                                 source_refs[key].append(ref)
                             matched = True
@@ -327,7 +339,9 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
                         rationales.setdefault(key, "first-person statement")
                         if sentence not in examples[key] and len(examples[key]) < 3:
                             examples[key].append(sentence[:280])
-                        ref = f"conv:{conv.source_index}/msg:{msg.id}"
+                        title_snip = slugify(conv.title, max_len=40)
+                        snip = sentence.strip().replace("\n", " ")[:80]
+                        ref = f"conv:{conv.source_index}/{title_snip}/msg:{msg.id}|{snip}"
                         if ref not in source_refs[key] and len(source_refs[key]) < 5:
                             source_refs[key].append(ref)
 
@@ -338,7 +352,8 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
         for other in statements_by_prefix.get(prefix, []):
             if other != text and difflib.SequenceMatcher(None, other.lower(), text.lower()).ratio() < 0.72:
                 contradictions.append(other[:200])
-        confidence = min(0.98, 0.45 + 0.18 * min(count, 3) + (0.08 if category in {"preferences", "instructions"} else 0.0))
+        confidence = min(0.98, 0.45 + 0.18 * min(count, 3) +
+                         (0.08 if category in {"preferences", "instructions"} else 0.0))
         items.append(MemoryItem(
             category=category,
             text=text,
@@ -356,7 +371,7 @@ def collect_memory_candidates(conversations: list[Conversation]) -> list[MemoryI
     return items
 
 
-def dedupe_memory_items(items: list[MemoryItem], similarity_threshold: float = 0.88) -> list[MemoryItem]:
+def dedupe_memory_items(items: list[MemoryItem], similarity_threshold: float = 0.86) -> list[MemoryItem]:
     kept: list[MemoryItem] = []
     for item in items:
         duplicate = False
@@ -365,7 +380,8 @@ def dedupe_memory_items(items: list[MemoryItem], similarity_threshold: float = 0
                 existing.count += item.count
                 existing.examples = list(dict.fromkeys(existing.examples + item.examples))[:3]
                 existing.confidence = max(existing.confidence, item.confidence)
-                existing.source_refs = list(dict.fromkeys(existing.source_refs + item.source_refs))[:5]
+                existing.source_refs = list(dict.fromkeys(
+                    existing.source_refs + item.source_refs))[:5]
                 duplicate = True
                 break
         if not duplicate:
@@ -492,8 +508,10 @@ def extract_attachments(export_zip: Path, output_dir: Path) -> list[AttachmentRe
                 shutil.copyfileobj(src, dst)
             category = classify_attachment(target)
             kind = "text" if category == "text" else "binary"
-            records.append(AttachmentRecord(info.filename, str(target.relative_to(output_dir)), kind, info.file_size, category))
-    (output_dir / "attachments_manifest.json").write_text(json.dumps([asdict(r) for r in records], indent=2), encoding="utf-8")
+            records.append(AttachmentRecord(info.filename, str(
+                target.relative_to(output_dir)), kind, info.file_size, category))
+    (output_dir / "attachments_manifest.json").write_text(
+        json.dumps([asdict(r) for r in records], indent=2), encoding="utf-8")
     return records
 
 
@@ -511,6 +529,23 @@ def classify_attachment(path: Path) -> str:
         return "video"
     if ext in TEXT_EXTS:
         return "text"
+    # Fallback: inspect file bytes to detect mostly-text files despite extension
+    try:
+        def is_mostly_text(p: Path, sample_size: int = 2048, threshold: float = 0.85) -> bool:
+            try:
+                with open(p, "rb") as fh:
+                    raw = fh.read(sample_size)
+                if not raw:
+                    return False
+                printable = sum(1 for b in raw if 32 <= b <= 126 or b in (9, 10, 13))
+                return (printable / len(raw)) >= threshold
+            except Exception:
+                return False
+
+        if is_mostly_text(path):
+            return "text"
+    except Exception:
+        pass
     return "binary"
 
 
@@ -549,7 +584,8 @@ def build_attachment_previews(output_dir: Path, limit_chars: int = 800) -> None:
         except Exception:
             text = ""
         previews.append({"file": row["output_path"], "preview": text})
-    (output_dir / "attachment_previews.json").write_text(json.dumps(previews, indent=2, ensure_ascii=False), encoding="utf-8")
+    (output_dir / "attachment_previews.json").write_text(json.dumps(previews,
+                                                                    indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def validate_output_dir(output_dir: Path) -> dict[str, Any]:
@@ -568,7 +604,8 @@ def validate_output_dir(output_dir: Path) -> dict[str, Any]:
             report["ok"] = False
             report["errors"].append(f"Missing required file: {path.name}")
     if not any(p.exists() for p in optional_expected):
-        report["warnings"].append("Memory export files are missing; this may be intentional if memory export was disabled.")
+        report["warnings"].append(
+            "Memory export files are missing; this may be intentional if memory export was disabled.")
     conv_dir = output_dir / "conversations"
     manifest = output_dir / "manifest.json"
     if conv_dir.exists() and not any(conv_dir.glob("*.md")) and not manifest.exists():
@@ -601,11 +638,14 @@ def build_upload_plan(output_dir: Path) -> list[dict[str, Any]]:
     plan = []
     for path in sorted((output_dir / "projects").glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        plan.append({"phase": 1, "kind": "project_bundle", "file": str(path.relative_to(output_dir)), "estimated_tokens": estimate_tokens(text)})
+        plan.append({"phase": 1, "kind": "project_bundle", "file": str(
+            path.relative_to(output_dir)), "estimated_tokens": estimate_tokens(text)})
     for path in sorted((output_dir / "conversations").glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        plan.append({"phase": 2, "kind": "conversation", "file": str(path.relative_to(output_dir)), "estimated_tokens": estimate_tokens(text)})
+        plan.append({"phase": 2, "kind": "conversation", "file": str(
+            path.relative_to(output_dir)), "estimated_tokens": estimate_tokens(text)})
     for path in sorted((output_dir / "attachments").glob("*")):
         if path.is_file():
-            plan.append({"phase": 3, "kind": "attachment", "file": str(path.relative_to(output_dir)), "estimated_tokens": None})
+            plan.append({"phase": 3, "kind": "attachment", "file": str(
+                path.relative_to(output_dir)), "estimated_tokens": None})
     return plan
