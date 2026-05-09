@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3
+- Improve memory extraction precision with stronger text normalisation and richer provenance references.
+- Improve attachment classification with content-based text detection fallback.
+- Harden browser automation upload handling with selector fallbacks and existence checks.
+- Expand and sanitise `STATUS.md` project reporting, diagrams, and release-tracking details.
+
 ## 0.0.2
 - Add `ABOUT.md` and minor documentation updates
 

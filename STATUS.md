@@ -1,6 +1,6 @@
 # ChatGPT → Claude migration toolkit – Project Status
 
-Last updated: 2026-05-09 14-14
+Last updated: 2026-05-09 18-35
 
 ## Project purpose
 
@@ -8,7 +8,7 @@ Toolkit for reviewing and migrating ChatGPT export bundles into Claude-friendly
 bundles and review artifacts. The package exposes CLI entrypoints and a TUI to
 parse, validate and export conversation data for downstream ingestion.
 
-Current release: v0.0.2 (see `pyproject.toml` and
+Current release: v0.0.3 (see `pyproject.toml` and
 `src/chatgpt_to_claude_toolkit/__init__.py` for version metadata).
 
 ## Current implementation state
@@ -151,8 +151,10 @@ python scripts/smoke_test.py
 
 ## Recent changes
 
-- Repository version set to `0.0.2` (pyproject metadata).
-- Implementation changes merged to `main` and pushed to `origin`.
+- Repository version set to `0.0.3` (pyproject metadata and package fallback).
+- Changelog updated with v0.0.3 release notes covering memory extraction,
+  attachment classification, and browser automation hardening.
+- README release metadata aligned to v0.0.3.
 
 ## Tests and verification status
 
@@ -192,11 +194,12 @@ these steps in release preparation and CI where appropriate.
   existence checks for resilient uploads.
 - ✓ Fixed STATUS.md SVG rendering: escaped XML special characters (&) in inline SVG text nodes.
 - ✓ All unit and smoke tests passing (9 tests, verified 2026-05-08 20:28).
+- ✓ Release preparation completed for v0.0.3: version metadata and changelog aligned.
 
 ## Next steps
 
-1. Prepare release: update CHANGELOG.md with improvements summary and changes.
-2. Tag and publish the release.
+1. Evaluate model-based memory extraction and richer attachment analysis.
+2. Add broader automated verification for browser-driven flows.
 
 ## Longer-term steps
 
@@ -217,4 +220,4 @@ these steps in release preparation and CI where appropriate.
 
 ---
 
-Last updated: 2026-05-09 14-14
+Last updated: 2026-05-09 18-35
