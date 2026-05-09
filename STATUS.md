@@ -1,6 +1,6 @@
 # ChatGPT → Claude migration toolkit – Project Status
 
-Last updated: 2026-05-08 20:28
+Last updated: 2026-05-09 14-14
 
 ## Project purpose
 
@@ -23,6 +23,7 @@ Current release: v0.0.2 (see `pyproject.toml` and
 	reports implemented as documented in `README.md`.
 - Tests: simple unit test(s) present under `tests/` (see
 	`tests/test_toolkit.py`).
+- Recent implementation work has been merged into `main` and pushed to `origin`.
 
 ## Active focus
 
@@ -151,7 +152,7 @@ python scripts/smoke_test.py
 ## Recent changes
 
 - Repository version set to `0.0.2` (pyproject metadata).
-- Current branch (local workspace metadata): `audit/improvements`.
+- Implementation changes merged to `main` and pushed to `origin`.
 
 ## Tests and verification status
 
@@ -181,7 +182,7 @@ these steps in release preparation and CI where appropriate.
 - Update `__version__` in `src/.../__init__.py` and `pyproject.toml` on release.
 - Update `CHANGELOG.md` and create a release tag per release management notes.
 
-## Completed tasks (audit/improvements branch)
+## Completed tasks
 
 - ✓ Improved memory extraction precision: enhanced text normalisation, enriched provenance
   references with title slug and sentence snippet in source_refs.
@@ -195,7 +196,7 @@ these steps in release preparation and CI where appropriate.
 ## Next steps
 
 1. Prepare release: update CHANGELOG.md with improvements summary and changes.
-2. Tag and publish release from audit/improvements branch or merge to main first.
+2. Tag and publish the release.
 
 ## Longer-term steps
 
@@ -216,4 +217,4 @@ these steps in release preparation and CI where appropriate.
 
 ---
 
-Last updated: 2026-05-08 20:28
+Last updated: 2026-05-09 14-14
