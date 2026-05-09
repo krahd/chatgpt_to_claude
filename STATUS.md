@@ -1,6 +1,6 @@
 # ChatGPT → Claude migration toolkit – Project Status
 
-Last updated: 2026-05-09 18-35
+Last updated: 2026-05-09 18-36
 
 ## Project purpose
 
@@ -155,6 +155,7 @@ python scripts/smoke_test.py
 - Changelog updated with v0.0.3 release notes covering memory extraction,
   attachment classification, and browser automation hardening.
 - README release metadata aligned to v0.0.3.
+- Release tag `v0.0.3` created and pushed; GitHub release published.
 
 ## Tests and verification status
 
@@ -195,6 +196,7 @@ these steps in release preparation and CI where appropriate.
 - ✓ Fixed STATUS.md SVG rendering: escaped XML special characters (&) in inline SVG text nodes.
 - ✓ All unit and smoke tests passing (9 tests, verified 2026-05-08 20:28).
 - ✓ Release preparation completed for v0.0.3: version metadata and changelog aligned.
+- ✓ Release publication completed for v0.0.3: tag pushed and GitHub release created.
 
 ## Next steps
 
@@ -220,4 +222,4 @@ these steps in release preparation and CI where appropriate.
 
 ---
 
-Last updated: 2026-05-09 18-35
+Last updated: 2026-05-09 18-36
